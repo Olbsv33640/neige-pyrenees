@@ -1,0 +1,58 @@
+# Met à jour les données du site (webcams, neige, météo, cols, ouvertures) puis le republie sur GitHub Pages.
+# Toutes les heures de 7 h à 22 h (heure de Paris en hiver = UTC+1), et à chaque modification du dépôt.
+name: Actualisation
+on:
+  schedule:
+    - cron: '7 6-21 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Reprendre les données déjà publiées (continuité météo, ouvertures, neige)
+        run: |
+          base="${{ steps.pages.outputs.base_url }}"
+          for f in data/live.json data/meteo.json data/routes.json data/cams.json data/status.json data/snowobs.json data/snowobs.png; do
+            curl -fsSL --max-time 60 "$base/$f?_=$(date +%s)" -o "$f.prev" && mv "$f.prev" "$f" || rm -f "$f.prev"
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dépendances
+        run: pip install -q numpy pillow onnxruntime
+      - name: Actualiser les données
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then python3 tools/update.py .; else python3 tools/update.py . --force; fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      # GitHub suspend les tâches planifiées d'un dépôt public sans activité depuis 60 jours : un commit vide par semaine l'évite
+      - name: Garder l'automatisation active
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%u%H)" = "106" ]; then
+            git config user.name "neige-bot"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Maintien de l'actualisation automatique" && git push || true
+          fi
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
