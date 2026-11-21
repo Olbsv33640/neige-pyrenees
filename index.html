@@ -2493,8 +2493,7 @@ async function pollLive(manual){if(LIVE.busy)return;LIVE.busy=true;renderLive();
     if(c||m)toast(c&&m?"Webcams et météo actualisées":c?`Webcams actualisées (${hh(D.camsUp)})`:"Neige et météo actualisées");
     else if(manual)toast(`À jour · webcams de ${hh(camsStamp())}, météo de ${hh(D.met.updated)}. Prochaine vérification dans 3 min`);
   }finally{LIVE.busy=false;renderLive()}}
-const TRIG="trig_01NdBt6cTTEVUFFhJfVTFgFT";
-// Actualisation à chaque ouverture : la page lance la tâche d'actualisation puis affiche « Actualisation en cours » jusqu'à l'arrivée des nouvelles données.
+const REFRESH_ENDPOINT=typeof window.NEIGE_REFRESH_ENDPOINT==="string"?window.NEIGE_REFRESH_ENDPOINT.trim():"";
 const REF_EST=5,REF_MAX=14;let REF=null;
 try{REF=JSON.parse(localStorage.getItem("np-ref"))||null}catch(e){}
 const refSave=()=>{try{REF?localStorage.setItem("np-ref",JSON.stringify(REF)):localStorage.removeItem("np-ref")}catch(e){}};
