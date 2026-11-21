@@ -2518,7 +2518,7 @@ async function kickRefresh(manual=false){
   REF={t:Date.now(),mine:true};refSave();refWatch();
   try{
     const r=await fetch(REFRESH_ENDPOINT,{method:"POST",headers:{"content-type":"application/json"},body:"{}",cache:"no-store"});
-    if(!r.ok)throw new Error("Le service de déclenchement a répondu "+r.status);
+    if(!r.ok){const detail=await r.json().then(j=>j.error).catch(()=>null);throw new Error(detail||("Le service de déclenchement a répondu "+r.status))}
     const j=await r.json();
     if(j.status==="already-running-or-recent"){
       const created=Date.parse(j.created_at||"");
