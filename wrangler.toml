@@ -1,0 +1,5 @@
+name = "neige-pyrenees-refresh"
+main = "worker/index.js"
+compatibility_date = "2026-11-21"
+workers_dev = true
+account_id = "908ef5d148794749f24d71a0d45c3781"

@@ -829,6 +829,7 @@ body.refon .toast{top:calc(env(safe-area-inset-top,0px) + 132px)}
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineSegmentsGeometry.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineMaterial.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/lines/LineSegments2.js"></script>
+<script src="refresh-config.js"></script>
 <script>
 /* ========================= DONNÉES STATIONS ========================= */
 const BULLETIN="2026-11-04";
@@ -2511,28 +2512,26 @@ function refRender(){if(!REF)return;
   $("#refP").style.width=Math.min(96,el/REF_EST*90)+"%";renderLive()}
 function refWatch(){refRender();clearInterval(refTick);let n=0;
   refTick=setInterval(()=>{n++;if(n%2===0&&!document.hidden)pollLive().then(refRender);else refRender()},10000)}
-// accès au connecteur demandé une seule fois au démarrage (use() peut mettre quelques secondes à répondre)
-let MCPP=null;const getMcp=()=>MCPP||(MCPP=(async()=>{try{return window.claude&&window.claude.use?await window.claude.use("mcp"):null}catch(e){return null}})());
-async function noMcp(){let st="unavailable",P=null;
-  try{P=window.claude&&window.claude.use?await window.claude.use("permissions"):null;if(P)st=await P.state("mcp")}catch(e){}
-  const watch={label:"Vérifier les nouvelles données",fn:()=>{refShow("","Recherche de nouvelles données…","");pollLive(true).then(()=>{$("#refbar").hidden=true;document.body.classList.remove("refon")})}};
-  if(st==="denied"&&P)refShow("err","Actualisation bloquée pour cette page","Le connecteur « Claude Code Remote » a été refusé ou désactivé pour cette page. Réactivez-le, la page se rechargera.",{label:"Autoriser l'actualisation",fn:async()=>{try{await P.manage()}catch(e){refShow("err","Ouvrez le menu Autorisations de l'artifact","Activez « Claude Code Remote », puis rechargez la page.");return}if(await P.state("mcp")==="granted")location.reload()}});
-  else if(st==="prompt"&&P)refShow("err","Autorisation nécessaire","La page doit pouvoir lancer la tâche d'actualisation via « Claude Code Remote ».",{label:"Autoriser l'actualisation",fn:async()=>{const r=await P.request(["mcp"]);if(r.mcp==="granted")location.reload();else noMcp()}});
-  else refShow("err","Bouton indisponible dans cette vue","L'aperçu ou le lien public ne peut pas lancer l'actualisation : ouvrez la page en grand dans claude.ai (application ou navigateur). Une actualisation lancée ailleurs s'affichera ici d'elle-même.",watch)}
-async function kickRefresh(force){
-  if(refOn()){refWatch();return}            // une actualisation tourne déjà (page rouverte entre-temps)
+async function kickRefresh(manual=false){
+  if(refOn()){refWatch();return}
   REF=null;refSave();
-  if(!force)return; // plus de lancement automatique à l'ouverture (tâches planifiées arrêtées à la demande d'Olivier)
-  const mcp=await getMcp();
-  if(!mcp){if(force)noMcp();return}
+  if(!REFRESH_ENDPOINT){await pollLive(manual);if(manual)toast("Actualisation à l'ouverture indisponible : le déclencheur n'est pas configuré");return}
   REF={t:Date.now(),mine:true};refSave();refWatch();
-  try{await mcp.callTool("Claude Code Remote","fire_trigger",{trigger_id:TRIG})}
-  catch(e){const c=e&&e.code;REF=null;refSave();clearInterval(refTick);refTick=null;renderLive();
-    const msg=c==="approval_required"||c==="not_in_manifest"||c==="consent_required"?["Actualisation non autorisée","Autorisez « Claude Code Remote » pour cette page (menu Autorisations de l'artifact)."]
-      :c==="needs_reauth"||c==="server_not_connected"?["Actualisation impossible","Reconnectez « Claude Code Remote » dans les connecteurs de claude.ai."]
-      :c==="not_granted"||c==="capability_disabled"||c==="capability_removed"?null
-      :["Actualisation impossible pour le moment","Les données affichées restent celles de "+(camsStamp()?dStamp(camsStamp()):"—")+"."];
-    if(msg)refShow("err",msg[0],msg[1])}}
+  try{
+    const r=await fetch(REFRESH_ENDPOINT,{method:"POST",headers:{"content-type":"application/json"},body:"{}",cache:"no-store"});
+    if(!r.ok)throw new Error("Le service de déclenchement a répondu "+r.status);
+    const j=await r.json();
+    if(j.status==="already-running-or-recent"){
+      const created=Date.parse(j.created_at||"");
+      if(j.run_status!=="completed"&&Number.isFinite(created)){REF.t=created;refSave();refWatch();return}
+      if(j.conclusion==="success"){
+        REF=null;refSave();clearInterval(refTick);refTick=null;await pollLive();refShow("ok","Données déjà actualisées",`Dernière actualisation : ${dStamp(j.created_at)}.`);return
+      }
+      throw new Error("La dernière actualisation a échoué. Réessayez dans un instant.");
+    }
+    if(j.status!=="queued")throw new Error("Réponse inattendue du service de déclenchement");
+  }catch(e){REF=null;refSave();clearInterval(refTick);refTick=null;renderLive();refShow("err","Impossible de lancer l’actualisation",e.message||"Réessayez dans quelques instants.");return}
+}
 // fenêtre de la pastille « Direct » : heures de la dernière actualisation + bouton Actualiser maintenant
 function lpRender(){const P=$("#livePop");if(P.hidden)return;const L=LIVE.cur||{},c=camsStamp(),m=D.met&&D.met.updated;
   const row=(k,v)=>`<dt>${k}</dt><dd>${v?dStamp(v):"—"}</dd>`;
@@ -2543,7 +2542,7 @@ function lpOpen(){const P=$("#livePop"),r=$("#live").getBoundingClientRect();P.h
   const w=P.offsetWidth;P.style.left=Math.max(16,Math.min(innerWidth-w-16,r.left+r.width/2-w/2))+"px";$("#live").setAttribute("aria-expanded","true");lpRender()}
 function lpClose(){$("#livePop").hidden=true;$("#live").setAttribute("aria-expanded","false")}
 document.addEventListener("click",e=>{const P=$("#livePop");
-  if(e.target.closest("#lpGo")){lpClose();refShow("","Recherche de nouvelles données…","");pollLive(true).then(()=>{$("#refbar").hidden=true;document.body.classList.remove("refon")});return}
+  if(e.target.closest("#lpGo")){lpClose();kickRefresh(true);return}
   if(!P.hidden&&!e.target.closest("#livePop")&&!e.target.closest("#live"))lpClose()});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#livePop").hidden)lpClose()});
 document.addEventListener("click",e=>{if(e.target.closest("#refA")&&refAct){const f=refAct.fn;refAct=null;f();return}});
@@ -2566,7 +2565,7 @@ async function start(){
     setLd(55,"Tracé des pistes et remontées");D.rel=grid(rel);D.osm=osm;D.met=met;D.cams=cams?cams.cams:{};D.camPages=cams?cams.pages:{};D.camsUp=cams&&(cams.updated||LV.cams)||null;D.routes=routes;D.trips=trips;
     const stj=await VJ("data/status.json",LV.status).catch(()=>null);if(stj){D.status=stj;STATUS.s=stj.s||{}}buildStats();applyOff();J("data/chargers.json").then(j=>{D.chg=j}).catch(()=>{});
   }catch(e){console.error(e);$("#ldTxt").textContent="Les données n'ont pas pu être chargées. Rechargez la page.";return}
-  renderIntro();renderCards();updateScrub(0);updateSnowline(1800);renderSnow();renderPkUI();setOrigin(S.origin);startLive();if(S.real)setReal(true);
+  renderIntro();renderCards();updateScrub(0);updateSnowline(1800);renderSnow();renderPkUI();setOrigin(S.origin);startLive();setTimeout(()=>kickRefresh(false),500);if(S.real)setReal(true);
   await new Promise(r=>setTimeout(r,20));setLd(80,"Modelage du relief");
   let ok=false;try{ok=typeof THREE!=="undefined"&&!!THREE.LineSegments2&&initGL()}catch(e){console.error(e);ok=false}
   setLd(100);$("#loading").classList.add("done");
