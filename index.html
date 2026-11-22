@@ -2510,7 +2510,8 @@ function rankHTML(){const L=STATIONS.filter(s=>s.sdOff!=null&&s.sdOff>0).sort((a
 
 /* ========================= DIRECT ========================= */
 const OBSOK=()=>today()<new Date(2026,10,7);
-const camSrc=c=>c.f+(c.ts?"?t="+encodeURIComponent(c.ts):"");
+// l'empreinte de l'image (hs) fait partie de l'adresse : une image corrigée à heure égale n'est pas resservie depuis le cache du navigateur
+const camSrc=c=>c.f+"?t="+encodeURIComponent((c.ts||"")+(c.hs?"-"+c.hs:"")+(D.camsUp?"-"+D.camsUp:""));
 const LIVE={cur:{},timer:null,busy:false};
 const VJ=(u,v)=>fetch(u+(v?"?v="+encodeURIComponent(v):"?_="+Date.now()),{cache:v?"default":"no-store"}).then(r=>{if(!r.ok)throw new Error(u);return r.json()});
 async function getLive(){try{const r=await fetch("data/live.json?_="+Date.now(),{cache:"no-store"});return r.ok?await r.json():null}catch(e){return null}}
