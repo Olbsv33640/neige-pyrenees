@@ -2393,19 +2393,34 @@ function computeSnowField(px,W,H){const {NX,NY,NB}=SR,[l0,a0,l1,a1]=SR.meta.bbox
   const sm=new Float32Array(F.length);for(let cy=0;cy<NY;cy++)for(let cx=0;cx<NX;cx++){let s=0,n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const xx=cx+dx,yy=cy+dy;if(xx<0||yy<0||xx>=NX||yy>=NY)continue;const w=dx||dy?.5:2;s+=F[yy*NX+xx]*w;n+=w}sm[cy*NX+cx]=s/n}
   {const gs=new Float32Array(NB),gg=new Float32Array(NB);for(let i=0;i<NX*NY;i++)for(let b=0;b<NB;b++){gs[b]+=Hs[i*NB+b];gg[b]+=Hg[i*NB+b]}
    let lo=null;for(let b=NB-2;b>=0;b-=2){const sn=gs[b]+gs[b+1],tt=sn+gg[b]+gg[b+1];if(tt<150)continue;if(sn/tt>=.08)lo=b*50;else if(lo!=null)break}SR.sparse=lo}
+  SR.sat=sm.slice();SR.satEv=ev.slice();fuseSnow()}
+// Fusion : le satellite ne voit pas sous les nuages, or il neige... sous les nuages. Les chutes du modèle météo tombées
+// après la dernière image dégagée abaissent la limite là où elles ont eu lieu (≈ 300 m sous l'isotherme 0 °C pendant la chute).
+function freshLine(s){const m=met(s.id);if(!m||!SR.meta)return null;const since=SR.meta.latest+"T13:00",h=m.haut,b=m.bas;let cm=0,fl=1e9;
+  const blk=(p,f)=>(p&&p.rec||[]).forEach(r=>{if(r[0]>=since)f(r)});
+  if(h&&h.rec){blk(h,r=>{cm+=r[1];if(r[2]>0)fl=Math.min(fl,r[2])})}
+  else if(h&&h.last&&h.last.e>=since&&h.last.cm>=.1){cm=h.last.cm;fl=Math.min(h.fl||1e9,h.flmin72||1e9)}
+  if(cm<.1)return null;let line=fl<1e8?Math.max(500,fl-300):s.max-300;let bcm=0;blk(b,r=>{bcm+=r[1]});if(bcm>=.1)line=Math.min(line,s.min);
+  return{line:Math.min(line,s.max-100),cm}}
+function fuseSnow(){if(!SR.sat)return;const {NX,NY}=SR,[l0,a0,l1,a1]=SR.meta.bbox,sm=SR.sat.slice(),ev=SR.satEv.slice();
+  const FS=STATIONS.map(s=>({s,f:typeof met==="function"&&D.met?freshLine(s):null})),hit=FS.filter(x=>x.f);let nC=0;
+  if(hit.length)for(let cy=0;cy<NY;cy++)for(let cx=0;cx<NX;cx++){const lo=l0+(cx+.5)/NX*(l1-l0),la=a0+(cy+.5)/NY*(a1-a0);let wa=0,wf=0,sl=0;
+    for(const x of FS){const d=Math.hypot((x.s.lon-lo)*81.7,(x.s.lat-la)*111.1);if(d>35)continue;const w=1/(1+(d/8)**2);wa+=w;if(x.f){wf+=w;sl+=w*x.f.line}}
+    if(wa&&wf/wa>=.5){const L=sl/wf,i=cy*NX+cx;if(L<sm[i]-50){sm[i]=L;ev[i]=1;nC++}}}
+  SR.fresh=hit.length?{n:hit.length,line:Math.round(hit.map(x=>x.f.line).sort((a,b)=>a-b)[hit.length>>1]/50)*50,cells:nC,names:hit.map(x=>x.s.name)}:null;
   SR.field=sm;const E_=[...sm].filter((v,i)=>ev[i]).map(v=>Math.round(v/50)*50).sort((a,b)=>a-b);SR.med=E_.length?E_[E_.length>>1]:null;SR.lo=E_.length?E_[Math.floor(E_.length*.1)]:null;SR.hi=E_.length?E_[Math.floor(E_.length*.9)]:null;
   STATIONS.forEach(s=>{SR.st[s.id]=snowLineAt(s.lon,s.lat)});
   const d=new Uint8Array(NX*NY);for(let i=0;i<d.length;i++)d[i]=Math.max(0,Math.min(255,Math.round(sm[i]/4000*255)));
-  if(typeof THREE!=="undefined"){if(E.slTex)E.slTex.dispose();const t=new THREE.DataTexture(d,NX,NY,THREE.LuminanceFormat,THREE.UnsignedByteType);t.magFilter=t.minFilter=THREE.LinearFilter;t.needsUpdate=true;E.slTex=t}}
+  if(typeof THREE!=="undefined"&&typeof E!=="undefined"){if(E.slTex)E.slTex.dispose();const t=new THREE.DataTexture(d,NX,NY,THREE.LuminanceFormat,THREE.UnsignedByteType);t.magFilter=t.minFilter=THREE.LinearFilter;t.needsUpdate=true;E.slTex=t}}
 function snowLineAt(lon,lat){if(!SR.field)return null;const [l0,a0,l1,a1]=SR.meta.bbox,{NX,NY}=SR,fx=Math.max(0,Math.min(NX-1.001,(lon-l0)/(l1-l0)*NX-.5)),fy=Math.max(0,Math.min(NY-1.001,(lat-a0)/(a1-a0)*NY-.5)),x=fx|0,y=fy|0,dx=fx-x,dy=fy-y,F=SR.field;
   return (F[y*NX+x]*(1-dx)+F[y*NX+x+1]*dx)*(1-dy)+(F[(y+1)*NX+x]*(1-dx)+F[(y+1)*NX+x+1]*dx)*dy}
 function applyReal(){const on=S.real&&!!E.slTex,[l0,a0,l1,a1]=SR.meta?SR.meta.bbox:[0,0,1,1];
   E.mats.forEach(m=>{const u=m.uniforms;if(u.uReal){u.uReal.value=on?1:0;u.uSL.value=E.slTex||null;u.uSLB.value.set(l0,a0,l1-l0,a1-a0)}else if(u.uSnow)u.uSnow.value=on&&SR.med?SR.med:S.snowline});
   document.body.classList.toggle("realsnow",on);$$("[data-slm]").forEach(b=>b.setAttribute("aria-pressed",(b.dataset.slm==="real")===S.real));
   ["#snowline","#snowline2"].forEach(q=>{const e=$(q);if(e)e.disabled=on});
-  if(on){$("#slOut").innerHTML=SR.med?"≈ "+fmt(SR.med)+"<small> m</small>":"—";$("#slOut2").textContent=SR.med?"≈ "+fmt(SR.med)+" m":"réel";$("#slLbl").textContent="Neige observée";
+  if(on){$("#slOut").innerHTML=SR.med?"≈ "+fmt(SR.med)+"<small> m</small>":"—";$("#slOut2").textContent=SR.med?"≈ "+fmt(SR.med)+" m":"réel";$("#slLbl").textContent=SR.fresh&&SR.fresh.cells?"Neige observée + chutes récentes":"Neige observée";
     const dl=new Date(SR.meta.latest).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}),w=STATIONS.filter(s=>SR.st[s.id]!=null&&SR.st[s.id]<s.max-50),full=w.filter(s=>SR.st[s.id]<=s.min);
-    $("#slRead").innerHTML=SR.med?`Sol majoritairement blanc au-dessus d'environ <b>${fmt(SR.med)} m</b>${SR.lo!=null&&SR.hi-SR.lo>150?` (de ${fmt(SR.lo)} à ${fmt(SR.hi)} m selon les secteurs)`:""}${SR.sparse!=null&&SR.sparse<SR.med-150?`, plaques éparses dès ${fmt(SR.sparse)} m surtout en versant nord`:""}. ${w.length?`<b>${w.length} station${w.length>1?"s":""}</b> ${w.length>1?"ont":"a"} de la neige sur le haut du domaine${full.length?`, ${full.length} jusqu'en bas`:""} : ${w.slice(0,6).map(s=>s.name).join(", ")}${w.length>6?"…":""}.`:"Aucune station n'a encore de neige au sommet."} <span class="note">Dernière image dégagée : ${dl}. Composite des satellites MODIS et VIIRS (NASA) sur 8 jours, environ 300 m par pixel : les petites plaques à l'ombre échappent au satellite ; sous les nuages, la dernière observation dégagée fait foi.</span>`
+    $("#slRead").innerHTML=SR.med?`Sol majoritairement blanc au-dessus d'environ <b>${fmt(SR.med)} m</b>${SR.lo!=null&&SR.hi-SR.lo>150?` (de ${fmt(SR.lo)} à ${fmt(SR.hi)} m selon les secteurs)`:""}${SR.sparse!=null&&SR.sparse<SR.med-150?`, plaques éparses dès ${fmt(SR.sparse)} m surtout en versant nord`:""}. ${w.length?`<b>${w.length} station${w.length>1?"s":""}</b> ${w.length>1?"ont":"a"} de la neige sur le haut du domaine${full.length?`, ${full.length} jusqu'en bas`:""} : ${w.slice(0,6).map(s=>s.name).join(", ")}${w.length>6?"…":""}.`:"Aucune station n'a encore de neige au sommet."} ${SR.fresh&&SR.fresh.cells?` <span class="note"><b>Chutes depuis la dernière image satellite</b> (${SR.fresh.n} station${SR.fresh.n>1?"s":""}) : limite abaissée vers ${fmt(SR.fresh.line)} m d'après le modèle météo, le satellite ne voyant pas sous les nuages.</span>`:""} <span class="note">Dernière image dégagée : ${dl}. Satellites MODIS et VIIRS (NASA) sur 8 jours, ~300 m par pixel, complétés par les chutes du modèle météo tombées depuis : une fine pellicule sur l'herbe ou à l'ombre peut leur échapper.</span>`
       :`Pas de neige détectée par satellite sur les Pyrénées. <span class="note">Dernière image dégagée : ${dl} (MODIS et VIIRS, NASA).</span>`}
   else{$("#slLbl").textContent="Limite pluie-neige";updateSnowline(S.snowline)}}
 async function setReal(on){S.real=on;try{localStorage.setItem("np-real",on?"1":"0")}catch(e){}
@@ -2483,7 +2498,7 @@ async function pollLive(manual){if(LIVE.busy)return;LIVE.busy=true;renderLive();
     const old=LIVE.cur;if(L.snow&&L.snow!==old.snow&&SR.field)loadSnowObs(L.snow).then(applyReal).catch(()=>{});if(L.status&&L.status!==old.status)VJ("data/status.json",L.status).then(j=>{D.status=j;STATUS.s=j.s||{};applyOff();renderIntro();renderCards();pinState();renderPick();if(S.selected&&S.tab==="jour")renderTab()}).catch(()=>{});const ch={cams:L.cams&&L.cams!==old.cams,meteo:L.meteo&&L.meteo!==old.meteo,routes:L.routes&&L.routes!==old.routes};
     const [c,m,r]=await Promise.all([ch.cams?VJ("data/cams.json",L.cams).catch(()=>null):null,ch.meteo?VJ("data/meteo.json",L.meteo).catch(()=>null):null,ch.routes?VJ("data/routes.json",L.routes).catch(()=>null):null]);
     if(c){D.cams=c.cams;D.camPages=c.pages;D.camsUp=c.updated||L.cams}
-    if(m)D.met=m;if(r)D.routes=r;
+    if(m){D.met=m;if(SR.sat){fuseSnow();applyReal()}}if(r)D.routes=r;
     LIVE.cur={...L,snow:SR.field?L.snow:old.snow,status:L.status||old.status,cams:c?L.cams:old.cams,meteo:m?L.meteo:old.meteo,routes:r?L.routes:old.routes};
     if(m){renderIntro();renderCards();renderPkUI();if(typeof buildFallTex==="function"&&renderer)try{buildFallTex()}catch(e){}setPeriod(S.period)}
     else if(c){renderSnow();renderCards()}

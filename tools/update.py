@@ -74,10 +74,16 @@ def point(r, alt):
     fl = [x for x in H['freezing_level_height'][ni:ni + 73] if x is not None]
     eps = episodes(T, sf)
     last = [e for e in eps if e['s'] <= NOW]; nxt = [e for e in eps if e['s'] > NOW]
+    # chutes des dernières 72 h par tranches de 6 h : [début, cm, isotherme 0 °C le plus bas pendant la chute]
+    # (la page s'en sert pour corriger l'enneigement satellite, aveugle sous les nuages pendant et juste après une chute)
+    FLh = H['freezing_level_height']; rec = []
+    for i0 in range(max(0, ni - 71), ni + 1, 6):
+        hs = [i for i in range(i0, min(i0 + 6, ni + 1)) if sf[i] > 0]
+        if hs: rec.append([T[i0], r1(sum(sf[i] for i in hs)) or 0.1, int(round(min((FLh[i] or 0) for i in hs) / 10) * 10)])
     return {'alt': alt, 'elev': r.get('elevation'), 'c24': past(24), 'c72': past(72), 'c7': past(168), 'c14': r1(sum(sf[:ni + 1])),
             'f72': fut(72), 'f7': fut(168), 'sd': round((H['snow_depth'][ni] or 0) * 100),
             'fl': int(round((H['freezing_level_height'][ni] or 0) / 10) * 10), 'flmin72': int(round(min(fl or [0]) / 10) * 10),
-            't': r1(H['temperature_2m'][ni]), 'last': last[-1] if last else None, 'next': nxt[0] if nxt else None,
+            't': r1(H['temperature_2m'][ni]), 'last': last[-1] if last else None, 'next': nxt[0] if nxt else None, 'rec': rec,
             'daily': [r1(x) for x in D['snowfall_sum']], 'tmin': [r1(x) for x in D['temperature_2m_min']], 'tmax': [r1(x) for x in D['temperature_2m_max']]}
 
 def save(name, obj):
