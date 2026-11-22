@@ -1,13 +1,15 @@
 # Lecture de la neige sur les webcams : modèle CLIP (vision, quantifié) en classement « zéro exemple »
 # entre trois familles de descriptions : sol enneigé / sol sans neige / image inexploitable (nuit, brouillard, image cassée, reflet).
 # On regarde surtout la moitié basse de l'image (le sol autour de la caméra), pas les sommets lointains.
-import os, json, urllib.request
+import os, json, urllib.request, threading
 import numpy as np
 from PIL import Image
 URL = 'https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_quantized.onnx'
 MEAN = np.array([0.48145466, 0.4578275, 0.40821073], np.float32); STD = np.array([0.26862954, 0.26130258, 0.27577711], np.float32)
-_S = None; _T = None
+_S = None; _T = None; _LOCK = threading.Lock()
 def _load():
+    with _LOCK: return _load1()
+def _load1():
     global _S, _T
     if _S is not None: return _S or None
     try:
@@ -15,7 +17,7 @@ def _load():
         d = os.environ.get('NEIGE_CACHE') or os.path.join(os.path.expanduser('~'), '.cache', 'neige'); os.makedirs(d, exist_ok=True)
         p = os.path.join(d, 'clip_vision_q.onnx')
         if not os.path.exists(p) or os.path.getsize(p) < 5e7:
-            urllib.request.urlretrieve(URL, p + '.tmp'); os.replace(p + '.tmp', p)
+            t = f'{p}.{os.getpid()}.tmp'; urllib.request.urlretrieve(URL, t); os.replace(t, p)
         o = ort.SessionOptions(); o.intra_op_num_threads = 4
         _S = ort.InferenceSession(p, o)
         t = json.load(open(os.path.join(os.path.dirname(__file__), 'clip_snow.json')))

@@ -232,7 +232,11 @@ import numpy as np
 # Utilisé par update.py ; renvoie None si le modèle ou onnxruntime ne sont pas disponibles.
 MODEL_URL = 'https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.onnx'
 _S = None
+import threading
+_SLOCK = threading.Lock()
 def _session():
+    with _SLOCK: return _session1()
+def _session1():
     global _S
     if _S is not None: return _S or None
     try:
