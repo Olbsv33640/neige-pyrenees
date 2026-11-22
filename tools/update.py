@@ -290,6 +290,43 @@ def boxes(h):
         if im: out.append({'t': html.unescape(t.group(1)).strip() if t else '', 'a': html.unescape(a.group(1)).strip() if a else '', 'u': im.group(1)})
     return out
 
+# Altitude approximative du sol vu par chaque webcam (m) : sert à placer la limite de neige
+CAMZ = {"luz-ardiden": {"Aulian - Front de neige": 1730, "Aulian - Panoramique": 1730, "Caperette": 2150, "Pourteres - Caperette": 1950, "Snowpark": 2000},
+  "cauterets": {"Les Crêtes - Arrivée TSD des Crêtes": 2400, "Les Crêtes - Panoramique Cirque": 2400, "Terrasse du Lys - Panorama": 1850, "Village - Casino": 930},
+  "grand-tourmalet": {"Barèges - Lienz": 1600, "Barèges - Tourmalet": 1500, "Barèges - Tournaboup": 1450, "Barèges - Tq Toue": 1750, "Forêt Laquette": 1700},
+  "pic-du-midi": {"La Mongie - Pic du Midi": 1800, "Pic du Midi - Bareges Tournaboup": 2877, "Pic du Midi - Observatoire - Est": 2877, "Pic du Midi - Observatoire - Le Pic": 2877, "Pic du Midi - Panoramique": 2877},
+  "piau-engaly": {"Balnéo": 1850, "Campbielh": 2200, "Combe de Piau": 2300, "Espace Débutant": 1850, "Front de Neige": 1850},
+  "saint-lary": {"Bouleaux": 1750, "Haut Tourette": 2300, "Les Merlans - Corneblanque": 2100, "Les Merlans - Tourette": 2100, "Pla d´Adet - Front de Neige": 1700},
+  "peyragudes": {"Belvédère - Arrivée": 2250, "Belvédère - Panoramique": 2250, "Cap de Pales": 1650, "Les Agudes - Cap de Pales": 1650, "Les Agudes - Piou Piou": 1600},
+  "val-louron": {"Loudenvielle - Val Louron": 970},
+  "gavarnie": {"Base": 1850, "Col des Tentes": 2200, "Panoramique Mourgat - Espécières": 2000, "Téléski Espécières et Jardin des Neiges": 1850, "Téléski Mourgat": 2000},
+  "hautacam": {"Front de Neige": 1520, "Col de Tramassel": 1560, "Mountain Luge": 1520, "Secteur Cardouet": 1650},
+  "val-dazun": {"Couraduque": 1370, "Soulor": 1474, "Col de Couraduque": 1370, "Col du Soulor": 1474, "Départ des Pistes": 1370},
+  "superbagneres": {"Céciré Express": 2150, "Le Plateau - Crémaillère Express": 1800, "Le Plateau - Secteur Céciré": 1800, "Secteur Cabane": 1850, "Le Lac - Arbesquens": 1650},
+  "le-mourtis": {"Ts Tuc de Pan": 1800, "Front de Neige": 1380},
+  "ax-3-domaines": {"Campels - Prat Ferrou": 2000, "Tute 2.400": 2400, "Bonascre - Front de Neige": 1400, "Bonascre - Pied de Pistes": 1400, "Domaine des Campels": 2000},
+  "ascou": {"Caburlet": 1750}, "monts-dolmes": {"Arrivee Piste": 1950, "Baby": 1500, "Les Sources - Arrivée": 1800, "Pradeilles": 1650, "Route": 1400},
+  "porte": {"Pieds dans le vide": 2200, "La Vignole": 1700, "Secteur Fontfrède": 1850, "TS La Mine - Bas": 1650, "TS La Mine - Haut": 2100},
+  "font-romeu": {"Col de Pam": 2000, "Font Romeu - La Calme": 1800, "Font Romeu - Les Airelles": 1750, "Gallinera": 2100, "Les Airelles - Front de Neige": 1750},
+  "cambre-daze": {"Cambre d´Aze - Cyrque": 2200, "Téléski del Orée": 1700, "Téléski Font Petite": 1900, "Panoramique Saint-Pierre-dels-Forcats": 1650},
+  "les-angles": {"Bas de pistes - Arrivée": 1650, "Bas de station": 1600, "Jassettes": 2000, "Plateau de Bigorre - Fount": 2000, "Snowpark": 1900},
+  "formigueres": {"Front de Neige - La Calmazeille": 1700, "La Chapelle": 1700, "Panoramique": 2000, "Ts La Calmazeille - Arrivée": 2100, "Bas des Pistes": 1700},
+  "pas-de-la-case": {"Port d´Envalira - Panorámica": 2400, "Trànsit - Envalira": 2400, "Trànsit - Pas de la Casa (frontera)": 2050, "Trànsit - Port d´Envalira": 2400, "Tunel de Envalira": 2050}}
+def cam_z(sid, t):
+    z = CAMZ.get(sid, {}).get(t)
+    if z: return z
+    mn, mx = ST[sid][2], ST[sid][3]
+    if re.search(r'front|pied|bas |bas$|base|départ|village|station|débutant|baby|luge|jardin', t, re.I): return mn
+    if re.search(r'sommet|arrivée|arrivee|crête|haut|pic|col |tute', t, re.I): return mx - 100
+    return round((mn + mx) / 2)
+def cam_read(b, im):
+    """Neige au sol vue par la webcam (sonde CLIP, voir camsnow.py) : b['sn'] probabilité de neige, b['sb'] image inexploitable."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import camsnow
+        r = camsnow.cam_snow(im)
+        if r: b['sn'], b['sb'] = r
+    except Exception as e: print('lecture neige webcam :', e)
+
 def do_cams():
     from PIL import Image
     import io
@@ -315,23 +352,27 @@ def do_cams():
         b['ts'] = f'{m.group(1)}-{m.group(2)}-{m.group(3)}T{m.group(4)}:{m.group(5)}' if m else ''
         prev = (old.get(sid) or [])
         prev = prev[i] if i < len(prev) else None
+        b['z'] = cam_z(sid, b['t'])
         if prev and prev.get('ts') == b['ts'] and b['ts'] and os.path.exists(out):   # image inchangée
-            b.update(f=prev['f'], w=prev['w'], h=prev['h'], p=prev.get('p')); return False
+            b.update(f=prev['f'], w=prev['w'], h=prev['h'], p=prev.get('p'), sn=prev.get('sn'), sb=prev.get('sb'), hs=prev.get('hs'), hs0=prev.get('hs0')); return False
         try:
-            im = Image.open(io.BytesIO(http(b['u'], 40, binary=True))).convert('RGB'); w, h = im.size; sc = min(1, 880 / w)
+            raw = http(b['u'], 40, binary=True); im = Image.open(io.BytesIO(raw)).convert('RGB'); w, h = im.size; sc = min(1, 880 / w)
+            import hashlib; hs = hashlib.md5(raw).hexdigest()[:10]   # image figée chez la source (même image, nouvelle date) : repérée par son empreinte
+            b['hs'] = hs; b['hs0'] = prev.get('hs0') if prev and prev.get('hs') == hs and prev.get('hs0') else STAMP
+            cam_read(b, im)
             try: b['p'] = count_people(im)
             except Exception: b['p'] = None
             im = im.resize((round(w * sc), round(h * sc)), Image.LANCZOS); im.save(out, quality=72, optimize=True, progressive=True)
             b.update(f=f'cams/{sid}-{i}.jpg', w=im.size[0], h=im.size[1]); return True
         except Exception:
-            if prev and os.path.exists(out): b.update(f=prev['f'], w=prev['w'], h=prev['h'], ts=prev.get('ts', ''))
+            if prev and os.path.exists(out): b.update(f=prev['f'], w=prev['w'], h=prev['h'], ts=prev.get('ts', ''), sn=prev.get('sn'), sb=prev.get('sb'), hs=prev.get('hs'), hs0=prev.get('hs0'))
             else: b['f'] = None
             return False
     jobs = [(sid, i, b) for sid, bx in res.items() for i, b in enumerate(bx)]
     with cf.ThreadPoolExecutor(10) as ex: new = list(ex.map(dl, jobs))
     for (sid, i, b), n in zip(jobs, new):
         if n: CHANGED.append(b['f'])
-    cams = {sid: [{k: b[k] for k in ('t', 'a', 'f', 'ts', 'w', 'h', 'p') if k in b and b[k] is not None} for b in bx if b.get('f')] for sid, bx in res.items()}
+    cams = {sid: [{k: b[k] for k in ('t', 'a', 'f', 'ts', 'w', 'h', 'p', 'z', 'sn', 'sb', 'hs', 'hs0') if k in b and b[k] is not None} for b in bx if b.get('f')] for sid, bx in res.items()}
     for sid in M:                      # page Pyreneige muette : on garde les images précédentes
         if not cams.get(sid) and old.get(sid): cams[sid] = old[sid]
     save('cams.json', {'src': 'Pyreneige.fr (webcams des stations)', 'updated': STAMP, 'cams': cams,
@@ -385,6 +426,65 @@ def do_snow():
                           'bbox': SNB, 'w': SNW, 'h': SNH, 'known': round(float((st > 0).mean()), 3), 'passes': len(used)})
     return latest
 
+# ---------- Météo-France : réseau nivo-météorologique (relevés des stations) et modèle de manteau neigeux (par massif, altitude, orientation) ----------
+MF = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/data'
+MASSIF = {"luz-ardiden": 66, "cauterets": 66, "grand-tourmalet": 66, "pic-du-midi": 66, "gavarnie": 66, "hautacam": 66, "val-dazun": 66,
+          "piau-engaly": 67, "saint-lary": 67, "peyragudes": 67, "val-louron": 67, "nistos": 67, "superbagneres": 68, "le-mourtis": 68,
+          "guzet": 69, "goulier": 70, "beille": 70, "ax-3-domaines": 70, "ascou": 72, "chioula": 72, "monts-dolmes": 72, "camurac": 72,
+          "mijanes": 73, "porte": 73, "les-angles": 73, "formigueres": 73, "font-romeu": 74, "cambre-daze": 74, "pas-de-la-case": 71}
+MASSIF_N = {64: 'Pays basque', 65: 'Aspe-Ossau', 66: 'Haute-Bigorre', 67: 'Aure-Louron', 68: 'Luchonnais', 69: 'Couserans', 70: 'Haute-Ariège',
+            71: 'Andorre', 72: 'Orlu-St-Barthélemy', 73: 'Capcir-Puymorens', 74: 'Cerdagne-Canigou'}
+def do_nivo():
+    import gzip, io, csv
+    yr = NOWDT.year; out = {'updated': STAMP, 'src': 'Météo-France (réseau nivo-météorologique ; modèle de manteau neigeux S2M)', 'obs': [], 's2m': None}
+    # 1) relevés des postes nivo des Pyrénées (hauteur de neige au sol, neige fraîche), moins de 48 h
+    try:
+        t = gzip.decompress(http(f'{MF}/OBS/NIVOSE/nivo_{yr}.csv.gz', 120, binary=True)).decode('utf-8', 'replace').splitlines()
+        rows = list(csv.DictReader(t, delimiter=';')); last = {}
+        lim = (NOWDT - timedelta(hours=48)).astimezone(ZoneInfo('UTC')).strftime('%Y-%m-%dT%H:%M')
+        for r in rows:
+            try: la, lo = float(r['lat']), float(r['lon'])
+            except Exception: continue
+            if not (42.3 < la < 43.3 and -0.6 < lo < 2.7): continue
+            v = r.get('validity_time', '')[:16]
+            if v < lim or r.get('ht_neige') in ('', None): continue
+            k = r['geo_id_wmo']
+            if k not in last or v > last[k]['t']:
+                f = lambda x: None if x in ('', None) else float(x)
+                last[k] = {'id': k, 'n': r['name'].strip().title(), 'lat': la, 'lon': lo, 'z': int(float(r['Altitude'])), 't': v + 'Z',
+                           'hn': round(f(r['ht_neige']) * 100), 'nf': round((f(r.get('ssfrai')) or 0) * 100)}
+        out['obs'] = sorted(last.values(), key=lambda o: o['id'])
+    except Exception as e: print('relevés nivo indisponibles :', e)
+    # 2) modèle S2M : limite de la neige par massif, en versant nord, sud et en moyenne (hauteur ≥ 2 cm)
+    try:
+        b = gzip.decompress(http(f'{MF}/REF_CC/NIVO/donnees_nivologiques_{yr}.csv.gz', 180, binary=True)).decode('ascii', 'replace')
+        lines = b.splitlines(); hdr = lines[0].split(';'); I = {k: i for i, k in enumerate(hdr)}
+        rows = [l.split(';') for l in lines[1:] if l[:3].split(';')[0] in {str(m) for m in MASSIF_N}]
+        dmax = max(c[1] for c in rows); D = {}
+        for c in rows:
+            if len(c) < 6 or c[1] != dmax: continue
+            m = int(c[0])
+            if m not in MASSIF_N: continue
+            z, ex, pe, hs = int(c[I['altitude']]), int(c[I['exposition']]), int(c[I['pente']]), float(c[I['neigetot']] or 0)
+            g = 'N' if ex in (315, 0, 45) else 'S' if ex in (135, 180, 225) else 'EW' if ex in (90, 270) else 'F'
+            D.setdefault(m, {}).setdefault(z, {}).setdefault(g, []).append(hs)
+        def line(bands, groups):
+            zs = sorted(bands); prof = {z: sum(sum(bands[z].get(g, [])) for g in groups) / max(1, sum(len(bands[z].get(g, [])) for g in groups)) for z in zs}
+            low = None
+            for z in reversed(zs):
+                if prof[z] >= 2: low = z
+                else: break
+            if low is None: return None, prof
+            return (low - 150 if low > zs[0] else low), prof
+        S = {}
+        for m, bands in D.items():
+            a, prof = line(bands, ('N', 'S', 'EW', 'F')); n, _ = line(bands, ('N',)); s_, _ = line(bands, ('S',))
+            S[m] = {'n': MASSIF_N[m], 'all': a, 'N': n, 'S': s_, 'prof': {z: round(v) for z, v in prof.items() if z >= 900}}
+        out['s2m'] = {'date': f'{dmax[:4]}-{dmax[4:6]}-{dmax[6:]}', 'm': S, 'st': MASSIF}
+    except Exception as e: print('modèle S2M indisponible :', e)
+    if not out['obs'] and not out['s2m']: raise RuntimeError('aucune donnée Météo-France')
+    save('nivo.json', out); return out
+
 def do_status():
     def txt(h):
         h = re.sub(r'<script.*?</script>|<style.*?</style>', '', h, flags=re.S)
@@ -427,8 +527,8 @@ if __name__ == '__main__':
     FORCE = '--force' in sys.argv
     errs = []; live_p = os.path.join(DATA, 'live.json')
     live = json.load(open(live_p)) if os.path.exists(live_p) else {}
-    for name, fn in (('cams', do_cams), ('status', do_status), ('snow', do_snow), ('meteo', do_meteo), ('routes', do_routes)):
-        if name not in ('cams', 'status') and not FORCE and age_h(live.get(name, '')) < (2.9 if name == 'snow' else 2.75) and os.path.exists(os.path.join(DATA, ('snowobs' if name == 'snow' else name) + '.json')):
+    for name, fn in (('cams', do_cams), ('status', do_status), ('snow', do_snow), ('nivo', do_nivo), ('meteo', do_meteo), ('routes', do_routes)):
+        if name not in ('cams', 'status') and not FORCE and age_h(live.get(name, '')) < (2.9 if name in ('snow', 'nivo') else 2.75) and os.path.exists(os.path.join(DATA, ('snowobs' if name == 'snow' else name) + '.json')):
             print(name, 'à jour (', live.get(name), ')'); continue
         try:
             r = fn(); live[name] = STAMP

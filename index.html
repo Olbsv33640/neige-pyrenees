@@ -1027,7 +1027,7 @@ function profileSVG(s){
   <line x1="${pl}" x2="${x1}" y1="${sl}" y2="${sl}" class="ps"/><text x="${x1}" y="${sl-5}" text-anchor="end" class="pst">limite ${fmt(S.snowline)} m</text>
   <text x="${x0+3}" y="${pts[0][1]-6}" class="pi">${fmt(s.min)}</text><text x="${x1}" y="${pts[pts.length-1][1]-7}" text-anchor="end" class="pi">${fmt(s.max)} m</text></svg>`}
 function tabApercu(s){const st=stState(s),k=D.stats[s.id];
-  return `${snowBlock(s)}
+  return `${S.real?snowSeenBlock(s):""}${snowBlock(s)}
    ${(D.cams[s.id]||[]).length?`<div class="sh-block"><h3>Webcams · ${D.cams[s.id].length}</h3><div class="camrow">${camThumbs(s.id)}</div></div>`:""}
    <div class="sh-block"><h3>Domaine</h3><dl class="kv"><div><dt>Altitude</dt><dd>${fmt(s.min)} – ${fmt(s.max)} m</dd></div><div><dt>${k&&k.off?"Domaine"+(GRAND[s.id]?" "+GRAND[s.id]:""):"Pistes cartographiées"}</dt><dd>${k&&k.off?(k.off.pis?k.off.pis+" pistes":"")+(k.off.km?(k.off.pis?" · ":"")+k.off.km+" km"+(s.type==="nordique"?" nordique":""):""):k&&k.totKm?fmt(k.totKm)+" km":k&&k.nordKm?fmt(k.nordKm)+" km nordique":"—"}</dd></div>
      <div><dt>Remontées</dt><dd>${k?(k.off&&k.off.rem||k.lifts.length||"—"):"—"}</dd></div><div><dt>Ouvertes</dt><dd>${(()=>{const t=STATUS.s[s.id];if(!t||!t.rem)return "—";const p=t.pis&&t.pis[0]||0,r=t.rem[0]||0;return `${p} piste${p>1?"s":""} · ${r} remontée${r>1?"s":""}`})()}</dd></div>
@@ -1167,6 +1167,12 @@ function chartSVG(m){const d=D.met.days,t=D.met.today,H=m.haut.daily,B=m.bas.dai
   g+=`<line x1="${pl+bw*(t+1)}" x2="${pl+bw*(t+1)}" y1="8" y2="${Ht-pb}" class="now"/>`;
   return `<svg class="chart" viewBox="0 0 ${W} ${Ht}" role="img" aria-label="Chutes de neige quotidiennes, 14 jours passés et 7 jours de prévision">${g}</svg>
    <div class="legend" style="margin-top:4px"><span><i style="background:#4080eb"></i>sommet</span><span><i style="background:#9ed4fa"></i>pied</span><span>cm de neige fraîche par jour</span></div>`}
+// limite de neige à la station, toutes sources croisées (voir stationSnow)
+function snowSeenBlock(s){const r=SR.fu&&SR.fu[s.id];if(!r)return "";const L=r.line,top=L<=s.min?"jusqu'en bas du domaine":L<s.max?`au-dessus de ${fmt(L)} m`:"pas sur le domaine";
+  const c=r.cams,cs=c.n?`${c.snow} webcam${c.snow>1?"s":""} sur ${c.n} voi${c.snow>1?"ent":"t"} de la neige au sol`+(c.see.length?` (${c.see.sort((a,b)=>a[1]-b[1]).map(x=>`${x[2]?"neige":"sol nu"} à ${fmt(x[1])} m`).join(", ")})`:""):"";
+  const nv=r.nivo.map(o=>`${o.n} (${fmt(o.z)} m) : ${o.hn} cm au sol`).join(" · ");const ms=r.massif;
+  return `<div class="sh-block"><h3>Neige au sol · sources croisées</h3><p style="margin:0 0 6px"><b>${L>=s.max?"Pas de neige au sol sur le domaine":"Neige au sol "+top}</b>${L<s.max&&L>s.min?` (domaine ${fmt(s.min)}–${fmt(s.max)} m)`:""}.</p>
+   <p class="note" style="margin:0">${[cs,nv?"Relevés Météo-France : "+nv:"",r.fresh?`Chute récente d'après le modèle météo (${fmtCm(r.fresh.cm)} au sommet).`:"",ms&&ms.N!=null&&ms.S!=null&&Math.abs(ms.N-ms.S)>=150?`Massif ${ms.n} : neige dès ${fmt(ms.N)} m en versant nord, ${fmt(ms.S)} m en versant sud (Météo-France, ${new Date(ms.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}).`:""].filter(Boolean).join(" ")} Sources : ${r.src.join(", ")}.</p></div>`}
 function snowBlock(s){const m=met(s.id);
   if(!m)return `<div class="sh-block"><h3>Neige</h3><p class="note">${s.obs&&OBSOK()?OBS+" ":""}Pas de données météo pour ce site.</p></div>`;
   const h=m.haut,b=m.bas;
@@ -2370,7 +2376,7 @@ document.addEventListener("change",e=>{if(e.target.id==="sunOn"){sunState.on=e.t
 /* ========================= ENNEIGEMENT RÉEL (satellite, NASA) ========================= */
 // data/snowobs.png : composite des observations satellites (0 inconnu, 10+âge sol, 50+âge neige).
 // On en déduit une limite de neige locale (grille de 0,05°, ~5 km) et la neige éparse en confrontant neige/sol à l'altitude du relief.
-const SR={meta:null,field:null,NX:61,NY:18,NB:72,st:{},med:null,lo:null,hi:null,busy:null};
+const SR={fu:{},meta:null,field:null,NX:61,NY:18,NB:72,st:{},med:null,lo:null,hi:null,busy:null};
 S.real=(()=>{try{const v=localStorage.getItem("np-real");return v==null?true:v==="1"}catch(e){return true}})();
 async function loadSnowObs(v){const meta=await VJ("data/snowobs.json",v);const img=new Image();img.src="data/snowobs.png?v="+encodeURIComponent(meta.updated);await img.decode();
   const cv=document.createElement("canvas");cv.width=img.width;cv.height=img.height;const cx=cv.getContext("2d",{willReadFrequently:true});cx.drawImage(img,0,0);
@@ -2396,31 +2402,64 @@ function computeSnowField(px,W,H){const {NX,NY,NB}=SR,[l0,a0,l1,a1]=SR.meta.bbox
   SR.sat=sm.slice();SR.satEv=ev.slice();fuseSnow()}
 // Fusion : le satellite ne voit pas sous les nuages, or il neige... sous les nuages. Les chutes du modèle météo tombées
 // après la dernière image dégagée abaissent la limite là où elles ont eu lieu (≈ 300 m sous l'isotherme 0 °C pendant la chute).
-function freshLine(s){const m=met(s.id);if(!m||!SR.meta)return null;const since=SR.meta.latest+"T13:00",h=m.haut,b=m.bas;let cm=0,fl=1e9;
+function freshLine(s,since){const m=met(s.id);if(!m)return null;const h=m.haut,b=m.bas;let cm=0,fl=1e9;
   const blk=(p,f)=>(p&&p.rec||[]).forEach(r=>{if(r[0]>=since)f(r)});
   if(h&&h.rec){blk(h,r=>{cm+=r[1];if(r[2]>0)fl=Math.min(fl,r[2])})}
   else if(h&&h.last&&h.last.e>=since&&h.last.cm>=.1){cm=h.last.cm;fl=Math.min(h.fl||1e9,h.flmin72||1e9)}
   if(cm<.1)return null;let line=fl<1e8?Math.max(500,fl-300):s.max-300;let bcm=0;blk(b,r=>{bcm+=r[1]});if(bcm>=.1)line=Math.min(line,s.min);
   return{line:Math.min(line,s.max-100),cm}}
+/* ===== ENNEIGEMENT : FUSION DES SOURCES =====
+   Par station : 1) une base, la plus récente entre l'image satellite dégagée (NASA) et le modèle de manteau neigeux de Météo-France (S2M, par massif) ;
+   2) abaissée si de la neige est tombée depuis (modèle météo heure par heure) ; 3) bornée par ce qui est vu sur place maintenant :
+   webcams analysées (neige au sol ou non, à leur altitude), relevés des postes nivo de Météo-France, hauteur annoncée par la station. */
+const hrsAgo=t=>t?(Date.now()-new Date(t).getTime())/36e5:1e9;
+function satAt(s){if(!SR.sat)return null;const [l0,a0,l1,a1]=SR.meta.bbox,{NX,NY}=SR,fx=Math.max(0,Math.min(NX-1.001,(s.lon-l0)/(l1-l0)*NX-.5)),fy=Math.max(0,Math.min(NY-1.001,(s.lat-a0)/(a1-a0)*NY-.5)),x=fx|0,y=fy|0,dx=fx-x,dy=fy-y,F=SR.sat;
+  return (F[y*NX+x]*(1-dx)+F[y*NX+x+1]*dx)*(1-dy)+(F[(y+1)*NX+x]*(1-dx)+F[(y+1)*NX+x+1]*dx)*dy}
+function stationSnow(s){const r={src:[],cams:{n:0,snow:0,bare:0,see:[]},nivo:[]};let base=null,bdate="";
+  const sat=satAt(s),sd=SR.meta&&SR.meta.latest,mf=D.nivo&&D.nivo.s2m,mm=mf&&mf.st&&mf.st[s.id],ms=mm&&mf.m[mm];
+  const s2=ms?(ms.all==null?Math.max(3200,s.max+300):ms.all):null;
+  if(sat!=null&&s2!=null){const ws=sd>=mf.date?2:1,wm=mf.date>sd?2:1;base=(sat*ws+s2*wm)/(ws+wm);bdate=sd>mf.date?sd:mf.date;r.src.push("satellite","Météo-France (modèle du massif)")}
+  else if(sat!=null){base=sat;bdate=sd;r.src.push("satellite")}else if(s2!=null){base=s2;bdate=mf.date;r.src.push("Météo-France (modèle du massif)")}
+  if(base==null)return null;
+  if(ms)r.massif={n:ms.n,N:ms.N,S:ms.S,date:mf.date};
+  const fr=D.met?freshLine(s,bdate+"T06:00"):null;if(fr&&fr.line<base){base=fr.line;r.fresh=fr;r.src.push("chutes récentes (modèle météo)")}
+  let lo=-1e9,up=1e9;
+  // webcams : récentes (< 5 h), image qui change (pas figée chez la source), exploitable
+  (D.cams[s.id]||[]).forEach(c=>{if(c.sn==null||c.sb==null||!c.z)return;if(hrsAgo(c.ts)>5||c.sb>=.5)return;if(c.hs0&&hrsAgo(c.hs0)>6&&hrsAgo(c.ts)<5)return;
+    r.cams.n++;if(c.sn>=.65){r.cams.snow++;up=Math.min(up,c.z);r.cams.see.push([c.t,c.z,1])}else if(c.sn<=.3){r.cams.bare++;lo=Math.max(lo,c.z+50);r.cams.see.push([c.t,c.z,0])}});
+  if(r.cams.n)r.src.push("webcams");
+  // relevés nivo à moins de 12 km, de moins de 36 h
+  ((D.nivo&&D.nivo.obs)||[]).forEach(o=>{const d=Math.hypot((o.lon-s.lon)*81.7,(o.lat-s.lat)*111.1);if(d>12||hrsAgo(o.t)>36)return;r.nivo.push(o);
+    if(o.hn>=2)up=Math.min(up,o.z);else if(o.hn===0&&!(fr&&o.t<new Date().toISOString()))lo=Math.max(lo,o.z+50)});
+  if(r.nivo.length)r.src.push("relevés Météo-France");
+  if(s.sdOff>0){up=Math.min(up,s.max);r.src.push("bulletin de la station")}
+  let line=base;if(lo>up)line=(lo+up)/2;else line=Math.max(lo,Math.min(up,base));
+  r.line=Math.round(line/50)*50;r.base=Math.round(base/50)*50;r.seen=lo>-1e9||up<1e9;r.lo=lo;r.up=up;return r}
 function fuseSnow(){if(!SR.sat)return;const {NX,NY}=SR,[l0,a0,l1,a1]=SR.meta.bbox,sm=SR.sat.slice(),ev=SR.satEv.slice();
-  const FS=STATIONS.map(s=>({s,f:typeof met==="function"&&D.met?freshLine(s):null})),hit=FS.filter(x=>x.f);let nC=0;
-  if(hit.length)for(let cy=0;cy<NY;cy++)for(let cx=0;cx<NX;cx++){const lo=l0+(cx+.5)/NX*(l1-l0),la=a0+(cy+.5)/NY*(a1-a0);let wa=0,wf=0,sl=0;
-    for(const x of FS){const d=Math.hypot((x.s.lon-lo)*81.7,(x.s.lat-la)*111.1);if(d>35)continue;const w=1/(1+(d/8)**2);wa+=w;if(x.f){wf+=w;sl+=w*x.f.line}}
-    if(wa&&wf/wa>=.5){const L=sl/wf,i=cy*NX+cx;if(L<sm[i]-50){sm[i]=L;ev[i]=1;nC++}}}
-  SR.fresh=hit.length?{n:hit.length,line:Math.round(hit.map(x=>x.f.line).sort((a,b)=>a-b)[hit.length>>1]/50)*50,cells:nC,names:hit.map(x=>x.s.name)}:null;
-  SR.field=sm;const E_=[...sm].filter((v,i)=>ev[i]).map(v=>Math.round(v/50)*50).sort((a,b)=>a-b);SR.med=E_.length?E_[E_.length>>1]:null;SR.lo=E_.length?E_[Math.floor(E_.length*.1)]:null;SR.hi=E_.length?E_[Math.floor(E_.length*.9)]:null;
-  STATIONS.forEach(s=>{SR.st[s.id]=snowLineAt(s.lon,s.lat)});
+  const FS=STATIONS.map(s=>{const r=stationSnow(s);SR.fu[s.id]=r;const sa=satAt(s);return r&&sa!=null?{s,d:r.line-sa}:null}).filter(Boolean);let nC=0;
+  // la correction de chaque station s'étend autour d'elle (jusqu'à ~25 km), le satellite garde la main ailleurs
+  for(let cy=0;cy<NY;cy++)for(let cx=0;cx<NX;cx++){const lo=l0+(cx+.5)/NX*(l1-l0),la=a0+(cy+.5)/NY*(a1-a0);let w=0,sd=0,wmax=0;
+    for(const x of FS){const d=Math.hypot((x.s.lon-lo)*81.7,(x.s.lat-la)*111.1);if(d>25)continue;const k=1/(1+(d/7)**2);w+=k;sd+=k*x.d;wmax=Math.max(wmax,k)}
+    if(w){const i=cy*NX+cx,D_=sd/w*Math.min(1,wmax*1.6);if(Math.abs(D_)>25){sm[i]=Math.max(0,sm[i]+D_);ev[i]=1;nC++}}}
+  SR.fresh=nC?{cells:nC}:null;
+  SR.field=sm;STATIONS.forEach(s=>{SR.st[s.id]=SR.fu[s.id]?SR.fu[s.id].line:snowLineAt(s.lon,s.lat)});
+  // chiffre d'ensemble : limite médiane dans les stations (là où l'on skie), pas sur toute la chaîne
+  const E_=STATIONS.map(s=>SR.st[s.id]).filter(v=>v!=null&&v<3300).map(v=>Math.round(v/50)*50).sort((a,b)=>a-b);
+  SR.med=E_.length?E_[E_.length>>1]:null;SR.lo=E_.length?E_[Math.floor(E_.length*.1)]:null;SR.hi=E_.length?E_[Math.floor(E_.length*.9)]:null;
   const d=new Uint8Array(NX*NY);for(let i=0;i<d.length;i++)d[i]=Math.max(0,Math.min(255,Math.round(sm[i]/4000*255)));
   if(typeof THREE!=="undefined"&&typeof E!=="undefined"){if(E.slTex)E.slTex.dispose();const t=new THREE.DataTexture(d,NX,NY,THREE.LuminanceFormat,THREE.UnsignedByteType);t.magFilter=t.minFilter=THREE.LinearFilter;t.needsUpdate=true;E.slTex=t}}
 function snowLineAt(lon,lat){if(!SR.field)return null;const [l0,a0,l1,a1]=SR.meta.bbox,{NX,NY}=SR,fx=Math.max(0,Math.min(NX-1.001,(lon-l0)/(l1-l0)*NX-.5)),fy=Math.max(0,Math.min(NY-1.001,(lat-a0)/(a1-a0)*NY-.5)),x=fx|0,y=fy|0,dx=fx-x,dy=fy-y,F=SR.field;
   return (F[y*NX+x]*(1-dx)+F[y*NX+x+1]*dx)*(1-dy)+(F[(y+1)*NX+x]*(1-dx)+F[(y+1)*NX+x+1]*dx)*dy}
+function snowSrcTxt(dl){const F=Object.values(SR.fu).filter(Boolean),nc=F.reduce((a,r)=>a+r.cams.n,0),ns=F.filter(r=>r.cams.n).length,nv=new Set(F.flatMap(r=>r.nivo.map(o=>o.id))).size,fr=F.filter(r=>r.fresh).length,mf=D.nivo&&D.nivo.s2m;
+  const dd=d=>new Date(d).toLocaleDateString("fr-FR",{day:"numeric",month:"long"});
+  return ` <span class="note"><b>Sources croisées</b> : ${[`satellites NASA (image dégagée du ${dl})`,mf?`modèle de manteau neigeux Météo-France par massif (${dd(mf.date)})`:"",fr?`chutes tombées depuis sur ${fr} station${fr>1?"s":""} (modèle météo)`:"",nc?`${nc} webcams analysées dans ${ns} stations`:"",nv?`${nv} relevé${nv>1?"s":""} des postes nivo Météo-France`:""].filter(Boolean).join(", ")}. Là où une webcam ou un relevé voit la neige (ou le sol nu), il fait foi sur le reste.</span>`}
 function applyReal(){const on=S.real&&!!E.slTex,[l0,a0,l1,a1]=SR.meta?SR.meta.bbox:[0,0,1,1];
   E.mats.forEach(m=>{const u=m.uniforms;if(u.uReal){u.uReal.value=on?1:0;u.uSL.value=E.slTex||null;u.uSLB.value.set(l0,a0,l1-l0,a1-a0)}else if(u.uSnow)u.uSnow.value=on&&SR.med?SR.med:S.snowline});
   document.body.classList.toggle("realsnow",on);$$("[data-slm]").forEach(b=>b.setAttribute("aria-pressed",(b.dataset.slm==="real")===S.real));
   ["#snowline","#snowline2"].forEach(q=>{const e=$(q);if(e)e.disabled=on});
-  if(on){$("#slOut").innerHTML=SR.med?"≈ "+fmt(SR.med)+"<small> m</small>":"—";$("#slOut2").textContent=SR.med?"≈ "+fmt(SR.med)+" m":"réel";$("#slLbl").textContent=SR.fresh&&SR.fresh.cells?"Neige observée + chutes récentes":"Neige observée";
+  if(on){$("#slOut").innerHTML=SR.med?"≈ "+fmt(SR.med)+"<small> m</small>":"—";$("#slOut2").textContent=SR.med?"≈ "+fmt(SR.med)+" m":"réel";$("#slLbl").textContent="Neige observée";
     const dl=new Date(SR.meta.latest).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}),w=STATIONS.filter(s=>SR.st[s.id]!=null&&SR.st[s.id]<s.max-50),full=w.filter(s=>SR.st[s.id]<=s.min);
-    $("#slRead").innerHTML=SR.med?`Sol majoritairement blanc au-dessus d'environ <b>${fmt(SR.med)} m</b>${SR.lo!=null&&SR.hi-SR.lo>150?` (de ${fmt(SR.lo)} à ${fmt(SR.hi)} m selon les secteurs)`:""}${SR.sparse!=null&&SR.sparse<SR.med-150?`, plaques éparses dès ${fmt(SR.sparse)} m surtout en versant nord`:""}. ${w.length?`<b>${w.length} station${w.length>1?"s":""}</b> ${w.length>1?"ont":"a"} de la neige sur le haut du domaine${full.length?`, ${full.length} jusqu'en bas`:""} : ${w.slice(0,6).map(s=>s.name).join(", ")}${w.length>6?"…":""}.`:"Aucune station n'a encore de neige au sommet."} ${SR.fresh&&SR.fresh.cells?` <span class="note"><b>Chutes depuis la dernière image satellite</b> (${SR.fresh.n} station${SR.fresh.n>1?"s":""}) : limite abaissée vers ${fmt(SR.fresh.line)} m d'après le modèle météo, le satellite ne voyant pas sous les nuages.</span>`:""} <span class="note">Dernière image dégagée : ${dl}. Satellites MODIS et VIIRS (NASA) sur 8 jours, ~300 m par pixel, complétés par les chutes du modèle météo tombées depuis : une fine pellicule sur l'herbe ou à l'ombre peut leur échapper.</span>`
+    $("#slRead").innerHTML=SR.med?`Dans les stations, neige au sol au-dessus d'environ <b>${fmt(SR.med)} m</b>${SR.lo!=null&&SR.hi-SR.lo>150?` (de ${fmt(SR.lo)} à ${fmt(SR.hi)} m selon les secteurs)`:""}${SR.sparse!=null&&SR.sparse<SR.med-150?`, plaques éparses dès ${fmt(SR.sparse)} m surtout en versant nord`:""}. ${w.length?`<b>${w.length} station${w.length>1?"s":""}</b> ${w.length>1?"ont":"a"} de la neige sur le haut du domaine${full.length?`, ${full.length} jusqu'en bas`:""} : ${w.slice(0,6).map(s=>s.name).join(", ")}${w.length>6?"…":""}.`:"Aucune station n'a encore de neige au sommet."} ${snowSrcTxt(dl)}`
       :`Pas de neige détectée par satellite sur les Pyrénées. <span class="note">Dernière image dégagée : ${dl} (MODIS et VIIRS, NASA).</span>`}
   else{$("#slLbl").textContent="Limite pluie-neige";updateSnowline(S.snowline)}}
 async function setReal(on){S.real=on;try{localStorage.setItem("np-real",on?"1":"0")}catch(e){}
@@ -2498,7 +2537,8 @@ async function pollLive(manual){if(LIVE.busy)return;LIVE.busy=true;renderLive();
     const old=LIVE.cur;if(L.snow&&L.snow!==old.snow&&SR.field)loadSnowObs(L.snow).then(applyReal).catch(()=>{});if(L.status&&L.status!==old.status)VJ("data/status.json",L.status).then(j=>{D.status=j;STATUS.s=j.s||{};applyOff();renderIntro();renderCards();pinState();renderPick();if(S.selected&&S.tab==="jour")renderTab()}).catch(()=>{});const ch={cams:L.cams&&L.cams!==old.cams,meteo:L.meteo&&L.meteo!==old.meteo,routes:L.routes&&L.routes!==old.routes};
     const [c,m,r]=await Promise.all([ch.cams?VJ("data/cams.json",L.cams).catch(()=>null):null,ch.meteo?VJ("data/meteo.json",L.meteo).catch(()=>null):null,ch.routes?VJ("data/routes.json",L.routes).catch(()=>null):null]);
     if(c){D.cams=c.cams;D.camPages=c.pages;D.camsUp=c.updated||L.cams}
-    if(m){D.met=m;if(SR.sat){fuseSnow();applyReal()}}if(r)D.routes=r;
+    if(m)D.met=m;if(r)D.routes=r;if(L.nivo&&L.nivo!==old.nivo){const n=await VJ("data/nivo.json",L.nivo).catch(()=>null);if(n)D.nivo=n}
+    if((m||c||(L.nivo&&L.nivo!==old.nivo))&&SR.sat){fuseSnow();applyReal()}
     LIVE.cur={...L,snow:SR.field?L.snow:old.snow,status:L.status||old.status,cams:c?L.cams:old.cams,meteo:m?L.meteo:old.meteo,routes:r?L.routes:old.routes};
     if(m){renderIntro();renderCards();renderPkUI();if(typeof buildFallTex==="function"&&renderer)try{buildFallTex()}catch(e){}setPeriod(S.period)}
     else if(c){renderSnow();renderCards()}
@@ -2577,7 +2617,7 @@ async function start(){
     const LV=await getLive()||{};LIVE.cur=LV;
     const [rel,osm,met,cams,routes,trips]=await Promise.all([J("data/relief.json"),J("data/osm.json"),VJ("data/meteo.json",LV.meteo).catch(()=>null),VJ("data/cams.json",LV.cams).catch(()=>null),VJ("data/routes.json",LV.routes).catch(()=>null),J("data/trips.json").catch(()=>null)]);
     setLd(55,"Tracé des pistes et remontées");D.rel=grid(rel);D.osm=osm;D.met=met;D.cams=cams?cams.cams:{};D.camPages=cams?cams.pages:{};D.camsUp=cams&&(cams.updated||LV.cams)||null;D.routes=routes;D.trips=trips;
-    const stj=await VJ("data/status.json",LV.status).catch(()=>null);if(stj){D.status=stj;STATUS.s=stj.s||{}}buildStats();applyOff();J("data/chargers.json").then(j=>{D.chg=j}).catch(()=>{});
+    const stj=await VJ("data/status.json",LV.status).catch(()=>null);if(stj){D.status=stj;STATUS.s=stj.s||{}}D.nivo=await VJ("data/nivo.json",LV.nivo).catch(()=>null);buildStats();applyOff();J("data/chargers.json").then(j=>{D.chg=j}).catch(()=>{});
   }catch(e){console.error(e);$("#ldTxt").textContent="Les données n'ont pas pu être chargées. Rechargez la page.";return}
   renderIntro();renderCards();updateScrub(0);updateSnowline(1800);renderSnow();renderPkUI();setOrigin(S.origin);startLive();setTimeout(()=>kickRefresh(false),500);if(S.real)setReal(true);
   await new Promise(r=>setTimeout(r,20));setLd(80,"Modelage du relief");

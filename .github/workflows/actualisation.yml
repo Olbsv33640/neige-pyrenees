@@ -25,7 +25,7 @@ jobs:
       - name: Reprendre les données déjà publiées (continuité météo, ouvertures, neige)
         run: |
           base="${{ steps.pages.outputs.base_url }}"
-          for f in data/live.json data/meteo.json data/routes.json data/cams.json data/status.json data/snowobs.json data/snowobs.png; do
+          for f in data/live.json data/meteo.json data/routes.json data/cams.json data/status.json data/snowobs.json data/snowobs.png data/nivo.json; do
             curl -fsSL --max-time 60 "$base/$f?_=$(date +%s)" -o "$f.prev" && mv "$f.prev" "$f" || rm -f "$f.prev"
           done
       - uses: actions/setup-python@v5
@@ -33,6 +33,11 @@ jobs:
           python-version: '3.12'
       - name: Dépendances
         run: pip install -q numpy pillow onnxruntime
+      # modèle de lecture de la neige sur les webcams (CLIP, ~90 Mo) : téléchargé une fois puis gardé en cache
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/neige
+          key: neige-modeles-v1
       - name: Actualiser les données
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then python3 tools/update.py .; else python3 tools/update.py . --force; fi
