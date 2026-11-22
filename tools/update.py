@@ -357,12 +357,8 @@ def do_cams():
         prev = (old.get(sid) or [])
         prev = prev[i] if i < len(prev) else None
         b['z'] = cam_z(sid, b['t'])
-        if prev and prev.get('ts') == b['ts'] and b['ts'] and os.path.exists(out):   # image inchangée
-            b.update(f=prev['f'], w=prev['w'], h=prev['h'], p=prev.get('p'), sn=prev.get('sn'), sb=prev.get('sb'), hs=prev.get('hs'), hs0=prev.get('hs0'))
-            if b.get('sn') is None:            # image déjà là mais pas encore lue : on la lit
-                try: cam_read(b, Image.open(out))
-                except Exception: pass
-            return False
+        # On retélécharge toujours : le dossier cams/ du dépôt contient d'anciennes images, garder « l'image inchangée »
+        # publiait une vieille photo sous une heure récente.
         try:
             raw = http(b['u'], 40, binary=True); im = Image.open(io.BytesIO(raw)).convert('RGB'); w, h = im.size; sc = min(1, 880 / w)
             import hashlib; hs = hashlib.md5(raw).hexdigest()[:10]   # image figée chez la source (même image, nouvelle date) : repérée par son empreinte
@@ -373,8 +369,7 @@ def do_cams():
             im = im.resize((round(w * sc), round(h * sc)), Image.LANCZOS); im.save(out, quality=72, optimize=True, progressive=True)
             b.update(f=f'cams/{sid}-{i}.jpg', w=im.size[0], h=im.size[1]); return True
         except Exception:
-            if prev and os.path.exists(out): b.update(f=prev['f'], w=prev['w'], h=prev['h'], ts=prev.get('ts', ''), sn=prev.get('sn'), sb=prev.get('sb'), hs=prev.get('hs'), hs0=prev.get('hs0'))
-            else: b['f'] = None
+            b['f'] = None                      # échec : pas d'image plutôt qu'une image périmée
             return False
     jobs = [(sid, i, b) for sid, bx in res.items() for i, b in enumerate(bx)]
     with cf.ThreadPoolExecutor(10) as ex: new = list(ex.map(dl, jobs))
