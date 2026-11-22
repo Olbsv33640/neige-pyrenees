@@ -358,7 +358,11 @@ def do_cams():
         prev = prev[i] if i < len(prev) else None
         b['z'] = cam_z(sid, b['t'])
         if prev and prev.get('ts') == b['ts'] and b['ts'] and os.path.exists(out):   # image inchangée
-            b.update(f=prev['f'], w=prev['w'], h=prev['h'], p=prev.get('p'), sn=prev.get('sn'), sb=prev.get('sb'), hs=prev.get('hs'), hs0=prev.get('hs0')); return False
+            b.update(f=prev['f'], w=prev['w'], h=prev['h'], p=prev.get('p'), sn=prev.get('sn'), sb=prev.get('sb'), hs=prev.get('hs'), hs0=prev.get('hs0'))
+            if b.get('sn') is None:            # image déjà là mais pas encore lue : on la lit
+                try: cam_read(b, Image.open(out))
+                except Exception: pass
+            return False
         try:
             raw = http(b['u'], 40, binary=True); im = Image.open(io.BytesIO(raw)).convert('RGB'); w, h = im.size; sc = min(1, 880 / w)
             import hashlib; hs = hashlib.md5(raw).hexdigest()[:10]   # image figée chez la source (même image, nouvelle date) : repérée par son empreinte
